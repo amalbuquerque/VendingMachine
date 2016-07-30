@@ -7,20 +7,14 @@ using System.Threading.Tasks;
 namespace VendingMachine
 {
     public class ProductState {
-        public Product Product { get; set; }
         public int Count { get; set; }
         public int Price { get; set; }
+        public Product Product { get; set; }
     }
 
     public class VendingMachine
     {
         public int[] AllowedDenominations = { 1, 5, 10, 20, 50, 100, 200 };
-
-        /// <summary>
-        /// Maps an int (the code of the product) to its ProductState
-        // (AvailableUnits and Price besides the Product itself)
-        /// </summary>
-        private Dictionary<int, ProductState> ProductsToSell;
 
         /// <summary>
         /// The key is Denomination in cents (pences), the value is how many coins are available
@@ -29,6 +23,12 @@ namespace VendingMachine
 
         private Dictionary<int, CoinChange> InsertedCoins;
 
+        /// <summary>
+        /// Maps an int (the code of the product) to its ProductState
+        // (AvailableUnits and Price besides the Product itself)
+        /// </summary>
+        private Dictionary<int, ProductState> ProductsToSell;
+
         public VendingMachine()
         {
             this.ProductsToSell = new Dictionary<int, ProductState>();
@@ -36,21 +36,24 @@ namespace VendingMachine
             this.InsertedCoins = new Dictionary<int, CoinChange>();
         }
 
-        public Dictionary<int, ProductState> GetAvailableItems()
-        {
-            return ProductsToSell;
-        }
-
         public Dictionary<int, CoinChange> GetAvailableChange()
         {
             return AvailableChange;
         }
 
-        #region Vending Machine functions
-        private string OutputMessage(string message)
+        public Dictionary<int, ProductState> GetAvailableItems()
         {
-            Console.WriteLine(message);
-            return message;
+            return ProductsToSell;
+        }
+
+        #region Vending Machine hardware functions
+        public List<CoinChange> ReturnInsertedCoins()
+        {
+            // TODO: We should implement here the
+            // logic controlling how the hardware coins dispenser works
+            var toReturn = InsertedCoins.Values.ToList();
+            InsertedCoins.Clear();
+            return toReturn;
         }
 
         private Product DispenseProduct(int productCode)
@@ -63,25 +66,76 @@ namespace VendingMachine
             return product.Product;
         }
 
-        //public List<CoinChange> ReturnChange(List<CoinChange> toReturn)
-        //{
-        //    foreach (var change in toReturn)
-        //    {
-        //        AvailableChange[change.Denomination].Count -= change.Count;
-        //    }
-
-        //    return toReturn;
-        //}
-
-        public List<CoinChange> ReturnInsertedCoins()
+        private string OutputMessage(string message)
         {
-            // TODO: We should implement here the
-            // logic controlling how the hardware coins dispenser works
-            var toReturn = InsertedCoins.Values.ToList();
-            InsertedCoins.Clear();
-            return toReturn;
+            Console.WriteLine(message);
+            return message;
         }
         #endregion
+
+        public string InsertCoin(int coin)
+        {
+            if (!AllowedDenominations.Contains(coin))
+            {
+                return OutputMessage("UNRECOGNIZED COIN. PLEASE INSERT A VALID COIN.");
+            }
+            if (InsertedCoins.Keys.Contains(coin))
+            {
+                InsertedCoins[coin].Count += 1;
+            }
+            else
+            {
+                InsertedCoins[coin] = new CoinChange()
+                {
+                    Denomination = coin,
+                    Count = 1
+                };
+            }
+
+            return OutputMessage("INSERTED AMOUNT: " + GetInsertedAmount() + "p");
+        }
+
+        public Product ProcessChoice(int productCode)
+        {
+            if (!ProductsToSell.Keys.Contains(productCode) || ProductsToSell[productCode].Count == 0)
+            {
+                OutputMessage("INVALID CODE");
+                return null;
+            }
+
+            var product = ProductsToSell[productCode];
+            var insertedCoins = GetInsertedAmount();
+            if (product.Price > insertedCoins)
+            {
+                OutputMessage("PLEASE INSERT MORE COINS");
+                return null;
+            }
+
+            // we have enough coins to dispense the product
+            // we empty the inserted coins into the available coins (we accept the inserted coins)
+            TurnInsertedCoinsIntoAvailableChange();
+
+            // we have to return this change, so the coins are put
+            // in the InsertedCoins place, where the user can retrieve them or use
+            // them for other product
+            var changeToReturn = GetChange(insertedCoins, product);
+            InsertedCoins = changeToReturn.ToDictionary(c => c.Denomination, c => c);
+
+            return DispenseProduct(productCode);
+        }
+
+        public void ReloadChange(ICollection<CoinChange> coinsToReload)
+        {
+            foreach (var change in coinsToReload)
+            {
+                var denomination = change.Denomination;
+                if (AvailableChange.ContainsKey(denomination))
+                {
+                    AvailableChange[denomination].Count += change.Count;
+                }
+                AvailableChange[denomination] = change;
+            }
+        }
 
         /// <summary>
         /// It receives a map associating a product code to a productState (Product, Count, Price).
@@ -119,118 +173,13 @@ namespace VendingMachine
             }
         }
 
-        public void ReloadChange(ICollection<CoinChange> coinsToReload)
-        {
-            foreach (var change in coinsToReload)
-            {
-                var denomination = change.Denomination;
-                if (AvailableChange.ContainsKey(denomination)) {
-                    AvailableChange[denomination].Count += change.Count;
-                }
-                AvailableChange[denomination] = change;
-            }
-        }
-
-        public string InsertCoin(int coin)
-        {
-            if (!AllowedDenominations.Contains(coin))
-            {
-                return OutputMessage("UNRECOGNIZED COIN. PLEASE INSERT A VALID COIN.");
-            }
-            if (InsertedCoins.Keys.Contains(coin))
-            {
-                InsertedCoins[coin].Count += 1;
-            }
-            else
-            {
-                InsertedCoins[coin] = new CoinChange()
-                {
-                    Denomination = coin,
-                    Count = 1
-                };
-            }
-
-            return OutputMessage("INSERTED AMOUNT: " + GetInsertedAmount() + "p");
-        }
-
-        private int GetInsertedAmount()
-        {
-            var total = 0;
-            foreach (int denomination in InsertedCoins.Keys)
-            {
-                var currentCoin = InsertedCoins[denomination];
-                total += currentCoin.Denomination * currentCoin.Count;
-            }
-            return total;
-        }
-
-        public Product ProcessChoice(int productCode)
-        {
-            if (!ProductsToSell.Keys.Contains(productCode) || ProductsToSell[productCode].Count == 0)
-            {
-                OutputMessage("INVALID CODE");
-                return null;
-            }
-
-            var product = ProductsToSell[productCode];
-            var insertedCoins = GetInsertedAmount();
-            if (product.Price > insertedCoins)
-            {
-                OutputMessage("PLEASE INSERT MORE COINS");
-                return null;
-            }
-
-            // we have enough coins to dispense the product
-            // we empty the inserted coins into the available coins (we accept the inserted coins)
-            TurnInsertedCoinsIntoAvailableChange();
-
-            // we have to return this change, so the coins are put
-            // in the InsertedCoins place, where the user can retrieve them or use
-            // them for other product
-            var changeToReturn = GetChange(insertedCoins, product);
-            InsertedCoins = changeToReturn.ToDictionary(c => c.Denomination, c => c);
-
-            return DispenseProduct(productCode);
-        }
-
-        private void TurnInsertedCoinsIntoAvailableChange()
-        {
-            foreach (var denomination in InsertedCoins.Keys.ToArray())
-            {
-                if (!AvailableChange.ContainsKey(denomination))
-                {
-                    AvailableChange[denomination] = InsertedCoins[denomination];
-                }
-                else
-                {
-                    AvailableChange[denomination].Count += InsertedCoins[denomination].Count;
-                }
-                InsertedCoins.Remove(denomination);
-            }
-        }
-
-        private List<CoinChange> GetChange(int payment, ProductState acquiredProduct)
-        {
-            var totalChange = payment - acquiredProduct.Price;
-            var changeToReturn = CalculateChange(
-                totalChange,
-                new List<CoinChange>(),
-                AvailableChange.Keys.OrderByDescending(k => k).ToList());
-
-            // we have to take this change from the available coins
-            foreach (var coin in changeToReturn)
-            {
-                AvailableChange[coin.Denomination].Count -= coin.Count;
-            }
-            return changeToReturn;
-        }
-
         private List<CoinChange> CalculateChange(
             int change, List<CoinChange> actualChange, List<int> availableDenominations)
         {
 
             // we emptied the available denominations
-            if (availableDenominations.Count == 0) {
+            if (availableDenominations.Count == 0)
+            {
                 return actualChange;
             }
 
@@ -254,7 +203,8 @@ namespace VendingMachine
                 numberOfCoinsToUse = AvailableChange[currentDenomination].Count;
             }
 
-            actualChange.Add(new CoinChange() {
+            actualChange.Add(new CoinChange()
+            {
                 Denomination = currentDenomination,
                 Count = numberOfCoinsToUse
             });
@@ -272,6 +222,49 @@ namespace VendingMachine
             }
 
             return actualChange;
+        }
+
+        private List<CoinChange> GetChange(int payment, ProductState acquiredProduct)
+        {
+            var totalChange = payment - acquiredProduct.Price;
+            var changeToReturn = CalculateChange(
+                totalChange,
+                new List<CoinChange>(),
+                AvailableChange.Keys.OrderByDescending(k => k).ToList());
+
+            // we have to take this change from the available coins
+            foreach (var coin in changeToReturn)
+            {
+                AvailableChange[coin.Denomination].Count -= coin.Count;
+            }
+            return changeToReturn;
+        }
+
+        private int GetInsertedAmount()
+        {
+            var total = 0;
+            foreach (int denomination in InsertedCoins.Keys)
+            {
+                var currentCoin = InsertedCoins[denomination];
+                total += currentCoin.Denomination * currentCoin.Count;
+            }
+            return total;
+        }
+
+        private void TurnInsertedCoinsIntoAvailableChange()
+        {
+            foreach (var denomination in InsertedCoins.Keys.ToArray())
+            {
+                if (!AvailableChange.ContainsKey(denomination))
+                {
+                    AvailableChange[denomination] = InsertedCoins[denomination];
+                }
+                else
+                {
+                    AvailableChange[denomination].Count += InsertedCoins[denomination].Count;
+                }
+                InsertedCoins.Remove(denomination);
+            }
         }
     }
 }
