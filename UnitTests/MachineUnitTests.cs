@@ -213,7 +213,7 @@ namespace UnitTests
 
             var initialWaterStock = Machine.GetAvailableItems()[1].Count;
 
-            // inserts a pound
+            // inserts 3 pounds
             Machine.InsertCoin(50);
             Machine.InsertCoin(50);
             Machine.InsertCoin(200);
@@ -233,6 +233,47 @@ namespace UnitTests
         }
 
         [Test]
+        public void TestProcessChoiceEnoughMoneyWithChange2()
+        {
+            // Water is now 88p
+            TestReloadProductsInitiallyWithProducts();
+
+            var changeToReload = new List<VM.CoinChange>() {
+                new VM.CoinChange() {
+                    Denomination = 5,
+                    Count = 50
+                },
+                new VM.CoinChange() {
+                    Denomination = 50,
+                    Count = 50
+                }
+            };
+            Machine.ReloadChange(changeToReload);
+
+            var initialWaterStock = Machine.GetAvailableItems()[1].Count;
+
+            // inserts 3 pounds
+            Machine.InsertCoin(50);
+            Machine.InsertCoin(50);
+            Machine.InsertCoin(200);
+
+            // we choose a water
+            var product = Machine.ProcessChoice(1);
+
+            // it will only be able to return 210p,
+            // instead of the correct 212p
+            var returnedCoins = Machine.ReturnInsertedCoins();
+
+            Assert.AreEqual(210, TotalAmountCoins(returnedCoins));
+            Assert.IsNotNull(product);
+            Assert.AreEqual(product.Description, "Water");
+            Assert.AreEqual(Machine.GetAvailableItems()[1].Count, initialWaterStock - 1);
+            Assert.AreEqual(Machine.GetAvailableChange()[50].Count, 52);
+            Assert.AreEqual(Machine.GetAvailableChange()[5].Count, 48);
+            Assert.AreEqual(Machine.GetAvailableChange()[200].Count, 0);
+        }
+
+        [Test]
         public void TestProcessChoiceInsufficientFunds()
         {
             // Starts with 5 water (100p), 15 snack (150p)
@@ -241,7 +282,7 @@ namespace UnitTests
 
             var initialWaterStock = Machine.GetAvailableItems()[1].Count;
 
-            // inserts a pound
+            // inserts 80p
             Machine.InsertCoin(50);
             Machine.InsertCoin(20);
             Machine.InsertCoin(10);

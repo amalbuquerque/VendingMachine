@@ -240,7 +240,9 @@ namespace VendingMachine
             // we can't use it for change
             if (change < currentDenomination)
             {
-                return actualChange;
+                // removes this denomination
+                availableDenominations.RemoveAt(0);
+                return CalculateChange(change, actualChange, availableDenominations);
             }
 
             // how many coins you can sum before reaching the change
@@ -265,8 +267,8 @@ namespace VendingMachine
 
             if (change > 0)
             {
-                // we add to the actual partial change we calculated, the remaining calculated change
-                actualChange.AddRange(CalculateChange(change, actualChange, availableDenominations));
+                // we calculate the remaining change
+                CalculateChange(change, actualChange, availableDenominations);
             }
 
             return actualChange;
