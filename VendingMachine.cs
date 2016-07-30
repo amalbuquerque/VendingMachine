@@ -47,9 +47,10 @@ namespace VendingMachine
         }
 
         #region Vending Machine functions
-        private void OutputMessage(string message)
+        private string OutputMessage(string message)
         {
             Console.WriteLine(message);
+            return message;
         }
 
         private Product DispenseProduct(int productCode)
@@ -62,29 +63,79 @@ namespace VendingMachine
             return product.Product;
         }
 
-        public List<CoinChange> ReturnChange(List<CoinChange> toReturn)
+        //public List<CoinChange> ReturnChange(List<CoinChange> toReturn)
+        //{
+        //    foreach (var change in toReturn)
+        //    {
+        //        AvailableChange[change.Denomination].Count -= change.Count;
+        //    }
+
+        //    return toReturn;
+        //}
+
+        public List<CoinChange> ReturnInsertedCoins()
         {
             // TODO: We should implement here the
-            // logic controlling how the hardware change dispenser works
-            foreach (var change in toReturn)
-            {
-                AvailableChange[change.Denomination].Count -= change.Count;
-            }
-
+            // logic controlling how the hardware coins dispenser works
+            var toReturn = InsertedCoins.Values.ToList();
+            InsertedCoins.Clear();
             return toReturn;
         }
         #endregion
 
-        public void ReloadProducts(IDictionary<int, ProductState> productsToReload, ICollection<CoinChange> coinsToReload)
+        /// <summary>
+        /// It receives a map associating a product code to a productState (Product, Count, Price).
+        /// If there is already a product with a specific code 
+        /// and the product reloaded is the same, it increments its counter.
+        /// If the existent and the reloaded products aren't the same, it doesn't allow it.
+        /// </summary>
+        /// <param name="productsToReload"></param>
+        public void ReloadProducts(IDictionary<int, ProductState> productsToReload)
         {
+            foreach (var productCode in productsToReload.Keys)
+            {
+                if (ProductsToSell.ContainsKey(productCode))
+                {
+                    var existentProduct = ProductsToSell[productCode];
+                    var productToReload = productsToReload[productCode];
 
+                    // if there are already products in the dispenser and the products aren't the same
+                    if (existentProduct.Count > 0 &&
+                        !string.Equals(existentProduct.Product.Description, productToReload.Product.Description))
+                    {
+                        throw new ArgumentException("You can't sell: " + productToReload.Product.Description
+                            + " with code: " + productCode + " because there is already " + existentProduct.Count
+                            + " units of: " + existentProduct.Product.Description + " in that dispenser.");
+                    }
+                    // the price may have changed with the reload
+                    existentProduct.Price = productToReload.Price;
+                    // reload the new items
+                    existentProduct.Count += productToReload.Count;
+                }
+                else
+                {
+                    ProductsToSell[productCode] = productsToReload[productCode];
+                }
+            }
         }
 
-        public void InsertCoin(int coin)
+        public void ReloadChange(ICollection<CoinChange> coinsToReload)
+        {
+            foreach (var change in coinsToReload)
+            {
+                var denomination = change.Denomination;
+                if (AvailableChange.ContainsKey(denomination)) {
+                    AvailableChange[denomination].Count += change.Count;
+                }
+                AvailableChange[denomination] = change;
+            }
+        }
+
+        public string InsertCoin(int coin)
         {
             if (!AllowedDenominations.Contains(coin))
             {
-                OutputMessage("UNRECOGNIZED COIN. PLEASE INSERT A VALID COIN.");
+                return OutputMessage("UNRECOGNIZED COIN. PLEASE INSERT A VALID COIN.");
             }
             if (InsertedCoins.Keys.Contains(coin))
             {
@@ -99,7 +150,7 @@ namespace VendingMachine
                 };
             }
 
-            OutputMessage("INSERTED AMOUNT: " + GetInsertedAmount() + "p");
+            return OutputMessage("INSERTED AMOUNT: " + GetInsertedAmount() + "p");
         }
 
         private int GetInsertedAmount()
@@ -129,18 +180,49 @@ namespace VendingMachine
                 return null;
             }
 
+            // we have enough coins to dispense the product
+            // we empty the inserted coins into the available coins (we accept the inserted coins)
+            TurnInsertedCoinsIntoAvailableChange();
+
+            // we have to return this change, so the coins are put
+            // in the InsertedCoins place, where the user can retrieve them or use
+            // them for other product
             var changeToReturn = GetChange(insertedCoins, product);
+            InsertedCoins = changeToReturn.ToDictionary(c => c.Denomination, c => c);
 
             return DispenseProduct(productCode);
+        }
+
+        private void TurnInsertedCoinsIntoAvailableChange()
+        {
+            foreach (var denomination in InsertedCoins.Keys.ToArray())
+            {
+                if (!AvailableChange.ContainsKey(denomination))
+                {
+                    AvailableChange[denomination] = InsertedCoins[denomination];
+                }
+                else
+                {
+                    AvailableChange[denomination].Count += InsertedCoins[denomination].Count;
+                }
+                InsertedCoins.Remove(denomination);
+            }
         }
 
         private List<CoinChange> GetChange(int payment, ProductState acquiredProduct)
         {
             var totalChange = payment - acquiredProduct.Price;
-            return CalculateChange(
+            var changeToReturn = CalculateChange(
                 totalChange,
                 new List<CoinChange>(),
                 AvailableChange.Keys.OrderByDescending(k => k).ToList());
+
+            // we have to take this change from the available coins
+            foreach (var coin in changeToReturn)
+            {
+                AvailableChange[coin.Denomination].Count -= coin.Count;
+            }
+            return changeToReturn;
         }
 
         private List<CoinChange> CalculateChange(
